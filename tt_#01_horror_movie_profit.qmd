@@ -1,0 +1,211 @@
+---
+title: "Horror Movie Profits"
+format: html
+editor: visual
+execute: 
+  echo: false
+---
+
+## Horror Movie Profits
+
+```{r}
+#| label: Set-up
+#| include: false
+
+library(tidyverse)
+library(scales)
+
+theme_set(theme_minimal())
+
+```
+
+```{r}
+#| label: Data Load
+#| include: false
+
+movie_profit_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018/2018-10-23/movie_profit.csv")
+
+movie_profit <- movie_profit_raw |> 
+  select(-...1) |> 
+  mutate(release_date = as_date(parse_date_time(release_date, "%m!/%d/%Y")),
+         release_year = year(release_date),
+         release_decade = year(release_date) %/% 10 * 10
+         ) |> 
+  arrange(release_date, movie) |> 
+  distinct() |> 
+  mutate(distributor_group = fct_lump(distributor, n = 6)) |> 
+  filter(worldwide_gross != 0)
+
+movie_profit |> 
+  count(movie, sort = TRUE)
+
+```
+
+```{r}
+movie_profit |> 
+  ggplot(aes(production_budget))+
+  geom_histogram()+
+  scale_x_log10(labels = label_comma(scale = 1/10^6, suffix = "M"))
+
+```
+
+```{r}
+movie_profit |> 
+  ggplot(aes(distributor_group, production_budget))+
+  geom_boxplot()+
+  coord_flip()+
+  scale_y_log10(labels = label_dollar())
+```
+
+```{r}
+movie_profit |> 
+  ggplot(aes(distributor_group, worldwide_gross))+
+  geom_boxplot()+
+  coord_flip()+
+  scale_y_log10(labels = label_dollar())
+```
+
+```{r}
+movie_profit |> 
+  ggplot(aes(fct_reorder(genre, production_budget), production_budget))+
+  geom_boxplot()+
+  coord_flip()+
+  scale_y_log10(labels = label_dollar())
+```
+
+```{r}
+movie_profit |> 
+  filter(worldwide_gross != 0) |> 
+  mutate(genre = fct_reorder(genre, worldwide_gross)) |> 
+  ggplot(aes(genre, worldwide_gross))+
+  geom_boxplot()+
+  coord_flip()+
+  scale_y_log10(labels = label_dollar())
+
+```
+
+```{r}
+movie_profit |> 
+  group_by(release_decade) |> 
+  summarise(
+    production_budget = mean(production_budget),
+    domestic_gross = mean(domestic_gross),
+    worldwide_gross = mean(worldwide_gross),
+    .groups = "drop"
+  ) |> 
+  pivot_longer(cols = production_budget:worldwide_gross, names_to = "category", values_to = "amount") |> 
+  ggplot(aes(release_decade, amount, color = category))+
+  geom_line()+
+  scale_y_log10(labels = label_dollar())
+  
+```
+
+```{r}
+movie_profit |> 
+  filter(release_year > 1980, release_year < 2019) |> 
+  group_by(release_year) |> 
+  summarise(
+    production_budget = mean(production_budget),
+    domestic_gross = mean(domestic_gross),
+    worldwide_gross = mean(worldwide_gross),
+    .groups = "drop"
+  ) |> 
+  pivot_longer(cols = production_budget:worldwide_gross, names_to = "category", values_to = "amount") |> 
+  ggplot(aes(release_year, amount, color = category))+
+  geom_line()+
+  scale_y_log10(labels = label_dollar())
+```
+
+```{r}
+movie_profit |> 
+  mutate(profit_ratio = round(worldwide_gross / production_budget, 2)) |> 
+  filter(release_year > 1999, release_year < 2019) |> 
+  group_by(release_year, genre) |> 
+  summarise(
+    sum_production_budget = sum(production_budget),
+    sum_worldwide_gross = sum(worldwide_gross),
+    avg_profit_ratio = mean(sum_worldwide_gross / sum_production_budget),
+    .groups = "drop"
+  ) |> 
+  ggplot(aes(release_year, avg_profit_ratio, color = genre))+
+  geom_line()
+```
+
+```{r}
+movie_profit |> 
+  mutate(profit_ratio = round(worldwide_gross / production_budget, 2)) |> 
+  filter(release_year > 1999, release_year < 2019) |> 
+  filter(!is.na(distributor_group), distributor_group != "Other") |> 
+  group_by(release_year, distributor_group) |> 
+  summarise(
+    sum_production_budget = sum(production_budget),
+    sum_worldwide_gross = sum(worldwide_gross),
+    avg_profit_ratio = mean(sum_worldwide_gross / sum_production_budget),
+    .groups = "drop"
+  ) |> 
+  ggplot(aes(release_year, avg_profit_ratio, color = distributor_group))+
+  geom_line()
+
+movie_profit |> 
+  filter(distributor == "Universal", release_year > 2015) |> 
+  arrange(desc(worldwide_gross))
+```
+
+```{r}
+movie_profit |> 
+  filter(release_year > 1969, release_year < 2019) |> 
+  group_by(release_decade, genre) |> 
+  summarise(
+    sum_production_budget = sum(production_budget),
+    sum_worldwide_gross = sum(worldwide_gross),
+    avg_profit_ratio = mean(sum_worldwide_gross / sum_production_budget),
+    .groups = "drop"
+  ) |> 
+  ggplot(aes(release_decade, sum_worldwide_gross, color = genre))+
+  geom_line()+
+  scale_y_log10(labels = label_dollar(scale = 1/10^6, suffix = "M", accuracy = 1))
+```
+
+```{r}
+movie_profit |> 
+  arrange(desc(worldwide_gross)) |> 
+  #filter(genre == "Horror") |> 
+  head(20) |> 
+  mutate(
+    movie = paste0(movie, " (", release_year, ") "),
+    movie = fct_reorder(movie, worldwide_gross)) |> 
+  ggplot(aes(movie, worldwide_gross, fill = distributor))+
+  geom_col()+
+  scale_y_continuous(labels = label_dollar(scale = 1/10^6, suffix = "M"))+
+  coord_flip()
+```
+
+```{r}
+movie_profit |> 
+  mutate(net_profit = worldwide_gross - production_budget) |> 
+  arrange(desc(net_profit)) |> 
+  head(20) |> 
+  mutate(
+    movie = paste0(movie, " (", release_year, ") "),
+    movie = fct_reorder(movie, net_profit)) |> 
+  ggplot(aes(movie, net_profit, fill = distributor))+
+  geom_col()+
+  scale_y_continuous(labels = label_dollar(scale = 1/10^6, suffix = "M"))+
+  coord_flip()
+```
+
+```{r}
+movie_profit |> 
+  mutate(profit_ratio = worldwide_gross / production_budget) |> 
+  arrange(desc(profit_ratio)) |> 
+  head(20) |> 
+  mutate(
+    movie = paste0(movie, " (", release_year, ") "),
+    movie = fct_reorder(movie, profit_ratio)) |> 
+  ggplot(aes(movie, profit_ratio, fill = distributor))+
+  geom_col()+
+  scale_y_continuous(labels = label_comma(suffix = "X"))+
+  coord_flip()
+```
+
+## Try ggplotly for interactive plots!!!

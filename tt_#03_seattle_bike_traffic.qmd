@@ -1,0 +1,241 @@
+---
+title: "Seattle Bike Traffic Analysis"
+format: html
+editor: visual
+execute: 
+  echo: false
+---
+
+```{r}
+#| include: false
+
+library(tidyverse)
+library(scales)
+library(plotly)
+
+theme_set(theme_minimal())
+
+bike_traffic <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-04-02/bike_traffic.csv") |> 
+  mutate(
+    datetime = mdy_hms(date),
+    datetime = datetime,
+    hour = hour(datetime),
+    date = as_date(datetime)
+    ) |> 
+  select(datetime, date, hour, everything())
+  
+```
+
+## Daily Bike/Pedestrian Traffic
+
+```{r}
+#| fig-width: 15
+
+bike_traffic |> 
+  group_by(hour) |> 
+  summarize_at(vars(bike_count, ped_count), sum, na.rm = TRUE) |> 
+  pivot_longer(cols = bike_count:ped_count, names_to = "type", values_to = "count") |> 
+  ggplot(aes(hour, count, color = type))+
+  geom_line()+
+  geom_point()+
+  scale_y_continuous(labels = label_comma(scale = 1/10^3, suffix = "K"))+
+  scale_x_continuous(n.breaks = 13)+
+  theme(legend.position = "top")+
+  labs(
+    title = "What time of the day people ride/walk through the crossings?",
+    subtitle = "# of Riders tend to spike at 8AM & 5PM, while pedestrians peak at noon",
+    x = "Hours",
+    y = "# of People passing the Crossings",
+    caption = "Source: github/tidytuesday"
+  )
+
+```
+
+## Daily Bike Traffic in each Crossing
+
+```{r}
+#| fig-width: 15
+
+bike_traffic |> 
+  group_by(hour, crossing, direction) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE),
+            .groups = "drop") |> 
+  ggplot(aes(hour, bike_count, color = direction))+
+  geom_point()+
+  geom_line()+
+  facet_wrap(~ crossing, scales = "free_y")+
+  scale_y_continuous(labels = label_comma(scale = 1/1000, suffix = "K"))+
+  theme(legend.position = "top")+
+  labs(
+    title = "Do Riding Directions differ throughout the day?",
+    subtitle = "Some Crossings appear to be 'Commute' purpose, while others are not",
+    x = "Hours of day",
+    y = "# of Riders",
+    caption = "Source: github/tidytuesday"
+  )
+```
+
+## Weekly Bike Traffic in each Crossing
+
+```{r}
+#| fig-width: 15
+
+bike_traffic |> 
+  mutate(weekday = wday(date, label = TRUE, week_start = 1))|> 
+  group_by(weekday, crossing) |> 
+  summarise(
+    bike_count = sum(bike_count, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  ggplot(aes(weekday, bike_count, fill = weekday))+
+  geom_col()+
+  scale_y_continuous(labels = label_comma())+
+  facet_wrap(~ crossing, scales = "free_y")+
+  theme(legend.position = "none")+
+  labs(
+    title = "High-Commute Crossings tends to have greater 'weekday-riders'",
+    subtitle = "Non-Commute Crossings (eg. MTS Trail, Burke Filman Trail) hits over weekends",
+    x = "Day of Week",
+    y = "# of Riders",
+    caption = "Source: github/tidytuesday"
+  )
+
+```
+
+```{r}
+#| fig-width: 15
+#| fig-height: 10
+
+bike_traffic |> 
+  select(-datetime, -ped_count) |> 
+  mutate(weekday = wday(date, label = TRUE)) |> 
+  group_by(crossing, weekday, hour) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(hour, bike_count, color = crossing))+
+  geom_line(show.legend = FALSE)+
+  facet_grid(crossing ~ weekday, scales = "free_y")+
+  scale_y_continuous(labels = label_comma())+
+  labs(
+  title = "Weekdays & Hour of the day Combined",
+  subtitle = "During the weekday, 'Commute-hour riders' in MTS trail also spikes!",
+  x = "Hours of day",
+  y = "# of Riders",
+  caption = "Source: github/tidytuesday"
+  )
+  
+
+```
+
+```{r}
+#| fig-width: 15
+#| fig-height: 10
+
+bike_traffic |> 
+  select(-datetime, -ped_count) |> 
+  mutate(weekday = wday(date, label = TRUE)) |> 
+  group_by(crossing, weekday, hour, direction) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(hour, bike_count, color = direction))+
+  geom_line(show.legend = TRUE)+
+  facet_grid(crossing ~ weekday, scales = "free_y")+
+  scale_y_continuous(labels = label_comma())+
+  labs(
+  title = "Weekdays & Hour of the day Combined for each Direction",
+  subtitle = "MTS trail only has 1 direction?",
+  x = "Hours of day",
+  y = "# of Riders",
+  caption = "Source: github/tidytuesday"
+  )
+  
+```
+
+## Time Series Analysis
+
+```{r}
+#| fig-width: 15
+#| fig-height: 10
+
+bike_traffic |> 
+  group_by(date, crossing) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(date, bike_count, color = crossing))+
+  geom_line(show.legend = FALSE)+
+  facet_wrap(~ crossing, scales = "free_y", ncol = 1)+
+  scale_x_date(
+    date_breaks = "3 months", 
+    date_labels = "%b-%y"
+    #limits = as_date(c("2013-12-18", "2018-02-28")) # this is not working...
+    )+ 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+  scale_y_continuous(labels = label_comma())+
+  labs(
+  title = "Daily Riders Trend and Seasonality",
+  subtitle = "What the hell happened in Burke Gilman Trail in Aug-2018???",
+  x = "",
+  y = "# of Daily Riders",
+  caption = "Source: github/tidytuesday"
+  )
+
+```
+
+Apparently, some incident happened on 30 May 2018 in the area of Burke Gilman Trail resulting in the big spike of the number of riders during the day, and then followed by the no count data for couple of months. Some news articles describing '**the Burke-Gilman Missing Link'** cases which also went through lawsuit appears to be the cause of the spike.
+
+Overall, daily noise makes the line plot little difficult to catch the pattern (seasonality, year over year trend, etc.). Hence adjusted for monthly trend instead.
+
+```{r}
+#| fig-width: 15
+#| fig-height: 15
+
+bike_traffic |> 
+  filter(date >= "2014-01-01", date <= "2018-12-31") |> 
+  mutate(month = floor_date(date, "month")) |> 
+  group_by(month, crossing) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(month, bike_count, color = crossing))+
+  geom_line(show.legend = FALSE)+
+  facet_wrap(~ crossing, scales = "free_y", ncol = 1)+
+  scale_x_date(
+    date_breaks = "3 months", 
+    date_labels = "%b-%y"
+    #limits = as_date(c("2013-12-18", "2018-02-28")) # this is not working...
+    )+ 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+  scale_y_continuous(labels = label_comma())+
+  labs(
+  title = "Monthly Riders Trend and Seasonality",
+  subtitle = "Clearly less riders during winter, ",
+  x = "",
+  y = "# of Monthly Riders",
+  caption = "Source: github/tidytuesday"
+  )
+
+```
+
+```{r}
+#| fig-width: 15
+#| fig-height: 10
+
+bike_traffic |> 
+  mutate(month = floor_date(date, "month")) |> 
+  group_by(month) |> 
+  summarise(bike_count = sum(bike_count, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(month, bike_count))+
+  geom_line(show.legend = FALSE)+
+  scale_x_date(
+    date_breaks = "3 months", 
+    date_labels = "%b-%y"
+    #limits = as_date(c("2014-01-01", "2018-12-31")) # this is not working...
+    )+ 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(labels = label_comma())+
+  labs(
+  title = "In Aggregate level, clearer seasonality",
+  subtitle = "Is there decrease in the total number of riders?",
+  x = "",
+  y = "# of Monthly Riders",
+  caption = "Source: github/tidytuesday"
+  )
+
+```
+
+Or is it the side effect of the temporary closure of the Burke Gilman Trail during the mid-2018?

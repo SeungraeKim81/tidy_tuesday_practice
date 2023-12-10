@@ -1,0 +1,169 @@
+---
+title: "R and Package Downloads"
+format: html
+editor: visual
+execute: 
+  echo: false
+---
+
+```{r}
+#| include: false
+
+library(tidyverse)
+library(scales)
+library(countrycode)
+library(plotly)
+
+theme_set(theme_light())
+
+r_download <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018/2018-10-30/r_downloads_year.csv") |> 
+  select(-...1)
+
+pack_download <- read_csv("http://cran-logs.rstudio.com/2023/2023-12-08.csv.gz")
+```
+
+# R Downloads
+
+## Overall Stats
+
+```{r}
+r_download |> 
+  count(date) |> 
+  ggplot(aes(date, n))+
+  geom_line()+
+  expand_limits(y = 0)+
+  labs(y = "Number of R downloads per day")
+  
+```
+
+```{r}
+r_download |> 
+  count(week = floor_date(date, "week")) |> 
+  filter(week > min(week)) |> 
+  ggplot(aes(week, n))+
+  geom_line()+
+  scale_y_continuous(labels = label_comma())+
+  expand_limits(y = 0)+
+  labs(y = "Number of R downloads per week")
+```
+
+```{r}
+r_download |> 
+  mutate(weekday = wday(date, label = TRUE)) |> 
+  count(weekday) |> 
+  ggplot(aes(weekday, n, fill = weekday))+
+  geom_col()+
+  expand_limits(y = 0)+
+  scale_y_continuous(labels = label_comma())+
+  labs(y = "Total # of R downloads in each day of week")
+```
+
+```{r}
+r_download |> 
+  count(date) |> 
+  mutate(weekday = wday(date, label = TRUE)) |> 
+  group_by(weekday) |> 
+  summarise(avg_download = mean(n)) |> 
+  ggplot(aes(weekday, avg_download, fill = weekday))+
+  geom_col()+
+  expand_limits(y = 0)+
+  scale_y_continuous(labels = label_comma())+
+  labs(y = "Average # of R downloads in each day of week")
+```
+
+## Country
+
+```{r}
+r_download |> 
+  count(country = countrycode(country, "iso2c", "country.name"), sort = TRUE) |> 
+  filter(!is.na(country)) |> 
+  head(16) |> 
+  ggplot(aes(fct_reorder(country, n), n, fill = country))+
+  geom_col()+
+  coord_flip()+
+  scale_y_continuous(labels = label_comma())+
+  labs(x = "Country", y = "Number of R downloads")+
+  theme(legend.position = "none")
+```
+
+```{r}
+g <- r_download |> 
+  count(country = countrycode(country, "iso2c", "country.name"), sort = TRUE) |> 
+  mutate(percent = n / sum(n)) |> 
+  filter(!is.na(country)) |> 
+  head(16) |> 
+  ggplot(aes(fct_reorder(country, percent), percent))+
+  geom_col()+
+  coord_flip()+
+  scale_y_continuous(labels = label_percent())+
+  labs(x = "Country", y = "Proportion of R downloads")+
+  theme(legend.position = "none")
+
+ggplotly(g)
+
+
+```
+
+## Versions
+
+```{r}
+r_download |> 
+  mutate(version = fct_lump(version, 8)) |> 
+  count(date, version) |> 
+  ggplot(aes(date, n, color = version))+
+  geom_line()
+```
+
+## Time
+
+```{r}
+r_download |> 
+  mutate(
+    country = countrycode(country, "iso2c", "country.name"),  # Convert country codes to country names
+    country = fct_lump(country, 8),  # Lump factor levels into groups
+    hour = hour(time)  # Extract hour from time
+  ) |> 
+  count(hour, country) |>  # Count occurrences of each hour-country combination
+  filter(!is.na(country)) |>  # Exclude rows where country is NA
+  ggplot(aes(hour, n, color = country))+  # Create plot
+  geom_line()+  # Add line geometry
+  expand_limits(y = 0)+  # Expand y limits to include 0
+  facet_wrap(~ country, scales = "free_y")+   # Facet by country with free y scale
+  theme(legend.position = "none")
+  
+```
+
+## Operating Systems
+
+```{r}
+r_download |> 
+  count(os) |> 
+  mutate(perc = n / sum(n)) |> 
+  ggplot(aes(fct_reorder(os, perc, .desc = TRUE), perc, fill = os))+
+  geom_col()+
+  scale_y_continuous(labels = label_percent())+
+  theme(legend.position = "none")
+```
+
+```{r}
+r_download |> 
+  mutate(
+    country = countrycode(country, "iso2c", "country.name"),  # Convert country codes to country names
+    country = fct_lump(country, 8)
+    ) |> 
+  count(os, country) |> 
+  group_by(country) |> 
+  mutate(perc = n / sum(n)) |> 
+  ggplot(aes(fct_reorder(os, perc, .desc = TRUE), perc, fill = os))+
+  geom_col()+
+  scale_y_continuous(labels = label_percent())+
+  facet_wrap(~ country)+
+  theme(legend.position = "none")
+```
+
+## R Package Downloads
+
+```{r}
+pack_download |> 
+  count(package, sort = TRUE) 
+```
